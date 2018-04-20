@@ -1,7 +1,5 @@
 package com.example.android.lunarlander.impl;
 
-import android.util.Log;
-
 import com.example.android.lunarlander.Autopilot;
 import com.example.android.lunarlander.dto.Action;
 import com.example.android.lunarlander.dto.InputDTO;
@@ -10,7 +8,7 @@ import com.example.android.lunarlander.dto.OutputDTO;
 import java.util.Random;
 
 
-public class AutopilotImpl implements Autopilot {
+public class AutopilotImpl2 implements Autopilot {
 
     private static final int dAngle = 6;
 
@@ -19,11 +17,11 @@ public class AutopilotImpl implements Autopilot {
         OutputDTO outputDTO = new OutputDTO();
 
         //ACCEL
-        if (input.y > 240) {
+        if (input.y > 240.0/762.0) {
             if (input.velocityY < -60 && new Random().nextBoolean()) {
                 outputDTO.actions.add(Action.ACCEL);
             }
-        } else if (input.y > 120) {
+        } else if (input.y > 120.0/762.0) {
             if (input.velocityY < -50) {
                 outputDTO.actions.add(Action.ACCEL);
             }

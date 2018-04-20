@@ -59,7 +59,7 @@ import java.util.TimerTask;
  * by the system.
  */
 class LunarView extends SurfaceView implements SurfaceHolder.Callback {
-    class LunarThread extends Thread {
+    class LunarThread extends Thread implements LunarLanderFerry {
         /*
          * Difficulty setting constants
          */
@@ -279,47 +279,28 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
          */
         public void doStart() {
             synchronized (mSurfaceHolder) {
-                // First set the game for Medium difficulty
-                mFuel = PHYS_FUEL_INIT;
-                mEngineFiring = false;
-                mGoalWidth = (int) (mLanderWidth * TARGET_WIDTH);
-                mGoalSpeed = TARGET_SPEED;
-                mGoalAngle = TARGET_ANGLE;
-                int speedInit = PHYS_SPEED_INIT;
-
-                // Adjust difficulty params for EASY/HARD
-                if (mDifficulty == DIFFICULTY_EASY) {
-                    mFuel = mFuel * 3 / 2;
-                    mGoalWidth = mGoalWidth * 4 / 3;
-                    mGoalSpeed = mGoalSpeed * 3 / 2;
-                    mGoalAngle = mGoalAngle * 4 / 3;
-                    speedInit = speedInit * 3 / 4;
-                } else if (mDifficulty == DIFFICULTY_HARD) {
-                    mFuel = mFuel * 7 / 8;
-                    mGoalWidth = mGoalWidth * 3 / 4;
-                    mGoalSpeed = mGoalSpeed * 7 / 8;
-                    speedInit = speedInit * 4 / 3;
-                }
-
-                // pick a convenient initial location for the lander sprite
-                mX = mCanvasWidth / 2;
-                mY = mCanvasHeight - mLanderHeight / 2;
-
-                // start with a little random motion
-                mDY = Math.random() * -speedInit;
-                mDX = Math.random() * 2 * speedInit - speedInit;
-                mHeading = 0;
-
-                // Figure initial spot for landing, not too near center
-                while (true) {
-                    mGoalX = (int) (Math.random() * (mCanvasWidth - mGoalWidth));
-                    if (Math.abs(mGoalX - (mX - mLanderWidth / 2)) > mCanvasHeight / 6)
-                        break;
-                }
-
-                mLastTime = System.currentTimeMillis() + 100;
-                setState(STATE_RUNNING);
+                LunarLanderPhysics.doStart(this);
             }
+        }
+
+        @Override
+        public Resources getResource() {
+            return mContext.getResources();
+        }
+
+        @Override
+        public int getDifficulty() {
+            return mDifficulty;
+        }
+
+        @Override
+        public int getCanvasWidth() {
+            return mCanvasWidth;
+        }
+
+        @Override
+        public int getCanvasHeight() {
+            return mCanvasHeight;
         }
 
         /**
@@ -571,13 +552,11 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                         // left/q -> left
                     } else if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT
                             || keyCode == KeyEvent.KEYCODE_Q) {
-                        Log.d("", "LEFT");
                         mRotating = -1;
                         return true;
                         // right/w -> right
                     } else if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
                             || keyCode == KeyEvent.KEYCODE_W) {
-                        Log.d("", "RIGHT");
                         mRotating = 1;
                         return true;
                         // up -> pause
@@ -611,7 +590,6 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                             || keyCode == KeyEvent.KEYCODE_Q
                             || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
                             || keyCode == KeyEvent.KEYCODE_W) {
-                        Log.d("", "UP: "+Integer.toString(keyCode));
                         mRotating = 0;
                         handled = true;
                     }
@@ -690,105 +668,152 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
          * Detects the end-of-game and sets the UI to the next state.
          */
         private void updatePhysics() {
-            long now = System.currentTimeMillis();
+            LunarLanderPhysics.updatePhysics(this);
+        }
 
-            // Do nothing if mLastTime is in the future.
-            // This allows the game-start to delay the start of the physics
-            // by 100ms or whatever.
-            if (mLastTime > now) return;
+        @Override
+        public long getLastTime() {
+            return mLastTime;
+        }
 
-            double elapsed = (now - mLastTime) / 1000.0;
+        @Override
+        public void setLastTime(long time) {
+            mLastTime = time;
+        }
 
-            // mRotating -- update heading
-            if (mRotating != 0) {
-                mHeading += mRotating * (PHYS_SLEW_SEC * elapsed);
+        @Override
+        public int getRotating() {
+            return mRotating;
+        }
 
-                // Bring things back into the range 0..360
-                if (mHeading < 0)
-                    mHeading += 360;
-                else if (mHeading >= 360) mHeading -= 360;
-            }
+        @Override
+        public void setRotating(int rotating) {
+            mRotating = rotating;
+        }
 
-            // Base accelerations -- 0 for x, gravity for y
-            double ddx = 0.0;
-            double ddy = -PHYS_DOWN_ACCEL_SEC * elapsed;
+        @Override
+        public double getHeading() {
+            return mHeading;
+        }
 
-            if (mEngineFiring) {
-                // taking 0 as up, 90 as to the right
-                // cos(deg) is ddy component, sin(deg) is ddx component
-                double elapsedFiring = elapsed;
-                double fuelUsed = elapsedFiring * PHYS_FUEL_SEC;
+        @Override
+        public void setHeading(double heading) {
+            mHeading = heading;
+        }
 
-                // tricky case where we run out of fuel partway through the
-                // elapsed
-                if (fuelUsed > mFuel) {
-                    elapsedFiring = mFuel / fuelUsed * elapsed;
-                    fuelUsed = mFuel;
+        @Override
+        public boolean isEngineFiring() {
+            return mEngineFiring;
+        }
 
-                    // Oddball case where we adjust the "control" from here
-                    mEngineFiring = false;
-                }
+        @Override
+        public void setEngineFiring(boolean isEngineFiring) {
+            mEngineFiring = isEngineFiring;
+        }
 
-                mFuel -= fuelUsed;
+        @Override
+        public double getFuel() {
+            return mFuel;
+        }
 
-                // have this much acceleration from the engine
-                double accel = PHYS_FIRE_ACCEL_SEC * elapsedFiring;
+        @Override
+        public void setFuel(double fuel) {
+            mFuel = fuel;
+        }
 
-                double radians = 2 * Math.PI * mHeading / 360;
-                ddx = Math.sin(radians) * accel;
-                ddy += Math.cos(radians) * accel;
-            }
+        @Override
+        public double getDX() {
+            return mDX;
+        }
 
-            double dxOld = mDX;
-            double dyOld = mDY;
+        @Override
+        public double getDY() {
+            return mDY;
+        }
 
-            // figure speeds for the end of the period
-            mDX += ddx;
-            mDY += ddy;
+        @Override
+        public void setDX(double dx) {
+            mDX = dx;
+        }
 
-            // figure position based on average speed during the period
-            mX += elapsed * (mDX + dxOld) / 2;
-            mY += elapsed * (mDY + dyOld) / 2;
+        @Override
+        public void setDY(double dy) {
+            mDY = dy;
+        }
 
-            mLastTime = now;
+        @Override
+        public double getX() {
+            return mX;
+        }
 
-            // Evaluate if we have landed ... stop the game
-            double yLowerBound = TARGET_PAD_HEIGHT + mLanderHeight / 2
-                    - TARGET_BOTTOM_PADDING;
-            if (mY <= yLowerBound) {
-                mY = yLowerBound;
+        @Override
+        public double getY() {
+            return mY;
+        }
 
-                int result = STATE_LOSE;
-                CharSequence message = "";
-                Resources res = mContext.getResources();
-                double speed = Math.sqrt(mDX * mDX + mDY * mDY);
-                boolean onGoal = (mGoalX <= mX - mLanderWidth / 2 && mX
-                        + mLanderWidth / 2 <= mGoalX + mGoalWidth);
+        @Override
+        public void setX(double dx) {
+            mX = dx;
+        }
 
-                // "Hyperspace" win -- upside down, going fast,
-                // puts you back at the top.
-                if (onGoal && Math.abs(mHeading - 180) < mGoalAngle
-                        && speed > PHYS_SPEED_HYPERSPACE) {
-                    result = STATE_WIN;
-                    mWinsInARow++;
-                    doStart();
+        @Override
+        public void setY(double dy) {
+            mY = dy;
+        }
 
-                    return;
-                    // Oddball case: this case does a return, all other cases
-                    // fall through to setMode() below.
-                } else if (!onGoal) {
-                    message = res.getText(R.string.message_off_pad);
-                } else if (!(mHeading <= mGoalAngle || mHeading >= 360 - mGoalAngle)) {
-                    message = res.getText(R.string.message_bad_angle);
-                } else if (speed > mGoalSpeed) {
-                    message = res.getText(R.string.message_too_fast);
-                } else {
-                    result = STATE_WIN;
-                    mWinsInARow++;
-                }
+        @Override
+        public double getLanderWidth() {
+            return mLanderWidth;
+        }
 
-                setState(result, message);
-            }
+        @Override
+        public double getLanderHeight() {
+            return mLanderHeight;
+        }
+
+        @Override
+        public int getGoalX() {
+            return mGoalX;
+        }
+
+        @Override
+        public void setGoalX(int goalX) {
+            mGoalX = goalX;
+        }
+
+        @Override
+        public int getGoalWidth() {
+            return mGoalWidth;
+        }
+
+        @Override
+        public void setGoalWidth(int goalWidth) {
+            mGoalWidth = goalWidth;
+        }
+
+        @Override
+        public int getGoalAngle() {
+            return mGoalAngle;
+        }
+
+        @Override
+        public void setGoalAngle(int goalAngle) {
+            mGoalAngle = goalAngle;
+        }
+
+        @Override
+        public int getGoalSpeed() {
+            return mGoalSpeed;
+        }
+
+        @Override
+        public void setGoalSpeed(int goalSpeed) {
+            mGoalSpeed = goalSpeed;
+        }
+
+        @Override
+        public void incWinsInRow() {
+            mWinsInARow++;
         }
     }
 
@@ -796,7 +821,6 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
         public AutopilotThread() {
             Autopilot autopilot = new AutopilotImpl();
             Timer t = new Timer();
-            Log.d("", "Start timer...");
             t.scheduleAtFixedRate(new TimerTask() {
                 @Override
                 public void run() {
@@ -814,7 +838,6 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                             thread.mGoalX,
                             thread.mGoalWidth);
                     OutputDTO outputDTO = autopilot.getActions(inputDTO);
-                    Log.d("", outputDTO.toString());
                     for (Action action:outputDTO.actions) {
                         thread.doKeyDown(getKeyEvent(action), null);
                     }
