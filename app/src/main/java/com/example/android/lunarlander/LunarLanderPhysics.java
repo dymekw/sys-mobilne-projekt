@@ -7,13 +7,15 @@ import static com.example.android.lunarlander.LunarView.LunarThread.*;
 
 public class LunarLanderPhysics {
 
-    public static void updatePhysics(LunarLanderFerry ferry) {
+    public static boolean isTraining = false;
+
+    public static boolean updatePhysics(LunarLanderFerry ferry) {
         long now = System.currentTimeMillis();
 
         // Do nothing if mLastTime is in the future.
         // This allows the game-start to delay the start of the physics
         // by 100ms or whatever.
-        if (ferry.getLastTime() > now) return;
+        if (ferry.getLastTime() > now) return false;
 
         double elapsed = (now - ferry.getLastTime()) / 1000.0;
 
@@ -91,7 +93,7 @@ public class LunarLanderPhysics {
                 ferry.incWinsInRow();
                 doStart(ferry);
 
-                return;
+                return true;
                 // Oddball case: this case does a return, all other cases
                 // fall through to setMode() below.
             } else if (!onGoal) {
@@ -110,12 +112,18 @@ public class LunarLanderPhysics {
                 else
                     message = "too_fast";
             } else {
+                message = "won";
                 result = STATE_WIN;
                 ferry.incWinsInRow();
             }
 
             ferry.setState(result, message);
+            if(isTraining){
+                doStart(ferry);
+                return true;
+            }
         }
+        return false;
     }
 
 

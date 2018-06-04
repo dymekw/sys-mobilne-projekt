@@ -12,7 +12,9 @@ android {
         testApplicationId "com.example.android.lunarlander.tests"
         testInstrumentationRunner "android.test.InstrumentationTestRunner"
     }
-
+    dependencies{
+        compile group: 'org.tensorflow', name: 'tensorflow', version: '1.8.0'
+    }
     buildTypes {
         release {
             minifyEnabled false
