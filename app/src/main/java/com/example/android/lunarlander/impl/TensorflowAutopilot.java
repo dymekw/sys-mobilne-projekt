@@ -58,10 +58,10 @@ public class TensorflowAutopilot implements Autopilot{
             outputDTO.actions.add(Action.ACCEL);
         }
         if (maxIndex == 1 || maxIndex == 4) {
-            outputDTO.actions.add(Action.LEFT);
+            outputDTO.actions.add(Action.RIGHT);
         }
         if (maxIndex == 2 || maxIndex == 5) {
-            outputDTO.actions.add(Action.RIGHT);
+            outputDTO.actions.add(Action.LEFT);
         }
 
         return outputDTO;
