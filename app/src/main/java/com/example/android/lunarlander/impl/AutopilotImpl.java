@@ -16,6 +16,7 @@ public class AutopilotImpl implements Autopilot {
 
     @Override
     public OutputDTO getActions(InputDTO input) {
+        System.out.println(input);
         OutputDTO outputDTO = new OutputDTO();
 
         //ACCEL
