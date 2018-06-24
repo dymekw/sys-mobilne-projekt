@@ -133,6 +133,8 @@ public class LunarLander extends Activity {
         // give the LunarView a handle to the TextView used for messages
         mLunarView.setTextView((TextView) findViewById(R.id.text));
 
+        mLunarView.setAssetManager(getAssets());
+
         if (savedInstanceState == null) {
             // we were just launched: set up a new game
             mLunarThread.setState(LunarThread.STATE_READY);

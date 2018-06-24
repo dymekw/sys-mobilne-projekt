@@ -17,6 +17,7 @@
 package com.example.android.lunarlander;
 
 import android.content.Context;
+import android.content.res.AssetManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -25,6 +26,7 @@ import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.util.AttributeSet;
@@ -35,16 +37,30 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.example.android.lunarlander.dto.Action;
 import com.example.android.lunarlander.dto.InputDTO;
 import com.example.android.lunarlander.dto.OutputDTO;
 import com.example.android.lunarlander.impl.AutopilotImpl;
+import com.example.android.lunarlander.impl.AutopilotImpl2;
+import com.example.android.lunarlander.impl.TensorflowAutopilot;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -59,6 +75,15 @@ import java.util.TimerTask;
  * by the system.
  */
 class LunarView extends SurfaceView implements SurfaceHolder.Callback {
+
+    private AssetManager assetManager;
+    private AutopilotThread autopilotThread;
+
+    public void setAssetManager(AssetManager assetManager) {
+        this.assetManager = assetManager;
+        autopilotThread = new AutopilotThread();
+    }
+
     class LunarThread extends Thread implements LunarLanderFerry {
         /*
          * Difficulty setting constants
@@ -73,7 +98,7 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
         public static final int PHYS_FIRE_ACCEL_SEC = 80;
         public static final int PHYS_FUEL_INIT = 60;
         public static final int PHYS_FUEL_MAX = 100;
-        public static final int PHYS_FUEL_SEC = 10;
+        public static final int PHYS_FUEL_SEC = 7;
         public static final int PHYS_SLEW_SEC = 120; // degrees/second rotate
         public static final int PHYS_SPEED_HYPERSPACE = 180;
         public static final int PHYS_SPEED_INIT = 30;
@@ -492,6 +517,11 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                     b.putInt("viz", View.VISIBLE);
                     msg.setData(b);
                     mHandler.sendMessage(msg);
+
+                    if (mMode == STATE_LOSE || mMode == STATE_WIN) {
+                        //autorestart after game end
+                        thread.doKeyDown(KeyEvent.KEYCODE_DPAD_UP, null);
+                    }
                 }
             }
         }
@@ -819,37 +849,19 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
 
     class AutopilotThread {
         public AutopilotThread() {
-            Autopilot autopilot = new AutopilotImpl();
+            Autopilot autopilot = new TensorflowAutopilot(assetManager);
             Timer t = new Timer();
-            t.scheduleAtFixedRate(new TimerTask() {
-                @Override
-                public void run() {
-                    if (thread.mMode != LunarThread.STATE_RUNNING) {
-                        return;
-                    }
+            t.scheduleAtFixedRate( new LLTimerTask(thread, autopilot), 1000, autopilot.getPeriod());
+        }
+    }
 
-                    InputDTO inputDTO = new InputDTO(
-                            thread.mX,
-                            thread.mY,
-                            thread.mHeading,
-                            thread.mDX,
-                            thread.mDY,
-                            thread.mFuel,
-                            thread.mGoalX,
-                            thread.mGoalWidth);
-                    OutputDTO outputDTO = autopilot.getActions(inputDTO);
-                    for (Action action:outputDTO.actions) {
-                        thread.doKeyDown(getKeyEvent(action), null);
-                    }
+    private static class LLTimerTask extends TimerTask {
+        private LunarThread thread;
+        private Autopilot autopilot;
 
-                    if (!outputDTO.actions.contains(Action.ACCEL)) {
-                        thread.doKeyUp(getKeyEvent(Action.ACCEL), null);
-                    }
-                    if (!outputDTO.actions.contains(Action.LEFT) && !outputDTO.actions.contains(Action.RIGHT)) {
-                        thread.doKeyUp(getKeyEvent(Action.LEFT), null);
-                    }
-                }
-            }, 1000, autopilot.getPeriod());
+        public LLTimerTask(LunarThread thread, Autopilot autopilot) {
+            this.thread = thread;
+            this.autopilot = autopilot;
         }
 
         private int getKeyEvent(Action action) {
@@ -862,9 +874,57 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                     return KeyEvent.KEYCODE_SPACE;
             }
         }
-    }
 
-    private AutopilotThread autopilotThread = new AutopilotThread();
+        @Override
+        public void run() {
+            if (thread==null || thread.mMode != LunarThread.STATE_RUNNING) {
+                return;
+            }
+
+            InputDTO inputDTO = new InputDTO(
+                    thread.mX / thread.mCanvasWidth,
+                    thread.mY / thread.mCanvasHeight,
+                    thread.mHeading,
+                    thread.mDX,
+                    thread.mDY,
+                    thread.mFuel,
+                    thread.mGoalX / (double) thread.mCanvasWidth,
+                    thread.mGoalWidth / (double) thread.mCanvasWidth);
+            OutputDTO outputDTO = autopilot.getActions(inputDTO);
+            int a = 0;
+            for (Action action : outputDTO.actions) {
+                thread.doKeyDown(getKeyEvent(action), null);
+            }
+            if (outputDTO.actions.contains(Action.ACCEL)) {
+                a += 3;
+            }
+            if (outputDTO.actions.contains(Action.LEFT)) {
+                a += 2;
+            }
+            if (outputDTO.actions.contains(Action.RIGHT)) {
+                a += 1;
+            }
+
+            if ((a != 0 && a != 3) || (a==0 && new Random().nextInt()%7==0) || (a==3 && new Random().nextInt()%6==0)) {
+                System.out.println(String.format("%f %f %f %f %f %f %f %f %d",
+                        inputDTO.x,
+                        inputDTO.y,
+                        inputDTO.headerAngle > 180 ? inputDTO.headerAngle-360 : inputDTO.headerAngle,
+                        inputDTO.velocityX,
+                        inputDTO.velocityY,
+                        inputDTO.fuel,
+                        inputDTO.goalX,
+                        inputDTO.goalWidth,
+                        a).replace(",", "."));
+            }
+            if (!outputDTO.actions.contains(Action.ACCEL)) {
+                thread.doKeyUp(getKeyEvent(Action.ACCEL), null);
+            }
+            if (!outputDTO.actions.contains(Action.LEFT) && !outputDTO.actions.contains(Action.RIGHT)) {
+                thread.doKeyUp(getKeyEvent(Action.LEFT), null);
+            }
+        }
+    }
 
     /** Handle to the application context, used to e.g. fetch Drawables. */
     private Context mContext;
@@ -890,6 +950,8 @@ class LunarView extends SurfaceView implements SurfaceHolder.Callback {
                 mStatusText.setText(m.getData().getString("text"));
             }
         });
+
+        //autopilotThread = new AutopilotThread();
 
         setFocusable(true); // make sure we get key events
     }
